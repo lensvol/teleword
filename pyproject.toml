@@ -13,6 +13,7 @@ black = "^19.10b0"
 mypy = "^0.761"
 ipdb = "^0.13.2"
 flake8 = "^3.7.9"
+pybetter = "^0.3.4"
 
 [build-system]
 requires = ["poetry>=0.12"]

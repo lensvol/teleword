@@ -88,12 +88,19 @@ def main():
 
     parser = argparse.ArgumentParser()
     parser.add_argument("chat_id", metavar="CHAT_ID", type=int, help="ID of the user that should receive the message.")
-    parser.add_argument("mode", metavar="MODE", choices=["message"], type=str, help="Type of thing being sent over.")
-    parser.add_argument("text", metavar="TEXT", type=str, help="Text of the message.")
     parser.add_argument("--token", metavar="API_TOKEN", type=str, help="Set Bot API token.")
-    parser.add_argument("--markdown", action="store_true", help="Use Markdown formatting when sending.")
-    parser.add_argument("--silent", action="store_true", help="Do not notify recipient of the message.")
+
+    subparsers = parser.add_subparsers(help="Types of messages that can be sent:", dest="mode")
+
+    msg_parser = subparsers.add_parser("text", help="Text message.")
+    msg_parser.add_argument("text", metavar="TEXT", type=str, help="Text of the message.")
+    msg_parser.add_argument("--markdown", action="store_true", help="Use Markdown formatting when sending.")
+    msg_parser.add_argument("--silent", action="store_true", help="Do not notify recipient of the message.")
+
     arguments = parser.parse_args()
+    if arguments.mode != "text":
+        logger.error("Unknown mode: {0}".format(arguments.mode))
+        exit(-1)
 
     bot_api = TelegramBotAPI(token=arguments.token or token_from_env)
 

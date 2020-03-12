@@ -1,11 +1,14 @@
 import argparse
+import io
 import json
 import logging
 import os
+import random
 import ssl
-import urllib.request
+import string
+from http.client import HTTPSConnection
 from typing import Tuple, Union, Dict, Optional
-from urllib.error import URLError, HTTPError
+from urllib.parse import urlparse
 
 TELEGRAM_API_ENDPOINT = "https://api.telegram.org/bot"
 
@@ -16,48 +19,70 @@ def setup_logging() -> None:
     logging.basicConfig(format="[ %(asctime)s | %(levelname)-6s ] %(message)s", level=logging.DEBUG)
 
 
-def make_http_request(url: str, insecure: bool = True, data: str = None) -> Tuple[int, str]:
-    ssl_context: Optional[ssl.SSLContext]
-    if insecure:
-        ssl_context = ssl.SSLContext()
-    else:
-        ssl_context = None
-
+def make_http_request(
+    url: str, insecure: bool = True, data: Optional[Dict[str, Union[int, str]]] = None
+) -> Tuple[int, bytes]:
     if data is None:
-        data = "{}"
+        data = {}
 
+    schema, netloc, url, params, query, fragments = urlparse(url)
     logger.debug("Sending POST request to {0}".format(url))
-    logger.debug("Request data: {0}".format(data))
+    body, boundary = encode_multipart_formdata(data)
 
-    request = urllib.request.Request(url, data.encode(), {"Content-Type": "application/json"})
+    connection = HTTPSConnection(netloc, context=ssl._create_unverified_context() if insecure else None,)
+    connection.connect()
 
-    try:
-        with urllib.request.urlopen(request, context=ssl_context) as response:
-            return response.getcode(), response.read().decode()
-    except HTTPError as exc:
-        logger.debug("{0}: {1}".format(exc.code, str(exc.reason)))
-        return exc.code, str(exc.reason)
-    except URLError as exc:
-        logger.debug(exc.reason)
-        return -1, str(exc.reason)
+    connection.putrequest("POST", url)
+    connection.putheader("Content-Type", "multipart/form-data; boundary={0}".format(boundary))
+    connection.putheader("Content-Length", str(len(body)))
+    connection.endheaders()
+
+    connection.send(body)
+
+    r = connection.getresponse()
+    return r.status, r.read()
+
+
+def encode_multipart_formdata(data: Dict[str, Union[str, int]]):
+    """
+    Code loosely adapted from Jason Kulatunga's answer on SO: https://stackoverflow.com/a/29332627
+    (with a couple fixes to make it run on Python 3).
+    """
+    boundary = "".join(random.choice(string.ascii_uppercase + string.digits) for _ in range(64))
+    body = io.BytesIO()
+    append_crlf = False
+
+    for key, value in data.items():
+        if append_crlf:
+            body.write(b"\r\n")
+        append_crlf = True
+
+        block = [
+            "--{0}".format(boundary),
+            'Content-Disposition: form-data; name="{0}"'.format(key),
+            "",
+            str(value),
+        ]
+        body.write(("\r\n".join(block)).encode())
+    body.write(b"\r\n--" + boundary.encode() + b"--\r\n\r\n")
+
+    return body.getvalue(), boundary
 
 
 class TelegramBotAPI:
     def __init__(self, token: str) -> None:
         self.token = token
 
-    def _call_api(self, method_name, data=None) -> Optional[str]:
+    def _call_api(self, method_name: str, data: Dict[str, Union[int, str]] = None) -> Optional[bytes]:
         status_code, response = make_http_request(
-            "{0}{1}/{2}".format(TELEGRAM_API_ENDPOINT, self.token, method_name),
-            insecure=True,
-            data=json.dumps(data or {}),
+            "{0}{1}/{2}".format(TELEGRAM_API_ENDPOINT, self.token, method_name), insecure=True, data=data,
         )
 
         logger.debug("Response status: {0}".format(status_code))
-        logger.debug("Response data: {0}".format(response))
+        logger.debug("Response data: {0}".format(response.decode()))
 
         if status_code != 200:
-            logger.error("Call to Bot API failed with code {0}: {1}".format(status_code, response))
+            logger.error("Call to Bot API failed with code {0}: {1}".format(status_code, response.decode()))
             return None
 
         return response

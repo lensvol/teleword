@@ -13,7 +13,7 @@ from typing import Tuple, Union, Dict, Optional, Iterable, Mapping
 from urllib.parse import urlparse
 
 Attachments = Mapping[Tuple[str, str], bytes]
-Payload = Mapping[str, Union[int, str]]
+Payload = Dict[str, Union[str, int]]
 Response = Mapping[str, Union[int, str]]
 
 TELEGRAM_API_ENDPOINT = "https://api.telegram.org/bot"
@@ -26,10 +26,7 @@ def setup_logging() -> None:
 
 
 def make_http_request(
-    url: str,
-    insecure: bool = True,
-    data: Optional[Payload] = None,
-    files: Optional[Attachments] = None,
+    url: str, insecure: bool = True, data: Optional[Payload] = None, files: Optional[Attachments] = None,
 ) -> Tuple[int, bytes]:
     if data is None:
         data = {}
@@ -101,8 +98,30 @@ def encode_multipart_formdata(data: Payload, files: Attachments):
 
 
 class TelegramBotAPI:
-    def __init__(self, token: str) -> None:
-        self.token = token
+    def __init__(self, token: str, chat_id: int) -> None:
+        self.token: str = token
+        self.silent: bool = False
+        self.parse_mode: Optional[str] = None
+        self.chat_id: int = chat_id
+
+    def disable_notifications(self) -> None:
+        self.silent = True
+
+    def enable_notifications(self) -> None:
+        self.silent = False
+
+    def set_parse_mode(self, mode: str) -> None:
+        self.parse_mode = mode
+
+    def _generate_envelope(self) -> Payload:
+        envelope: Payload = {
+            "disable_notifications": "true" if self.silent else "false",
+            "chat_id": self.chat_id,
+        }
+        if self.parse_mode:
+            envelope["parse_mode"] = self.parse_mode
+
+        return envelope
 
     def _call_api(
         self, method_name: str, data: Payload = None, attachments: Mapping[str, str] = None
@@ -136,22 +155,19 @@ class TelegramBotAPI:
 
         return None
 
-    def send_message(self, chat_id: int, text: str, silent: bool = True, mode: bool = None) -> bool:
-        message: Dict[str, Union[str, int, bool]] = {
-            "chat_id": chat_id,
-            "text": text,
-            "disable_notification": bool(silent),
-        }
-        if mode:
-            message["parse_mode"] = mode
+    def send_message(self, chat_id: int, text: str) -> bool:
+        message: Payload = self._generate_envelope()
+        message["text"]  = text
 
+        logger.debug("Trying to send text message '{0}' to chat ID {1}...".format(text, chat_id))
         return self._call_api("sendMessage", data=message, attachments={}) is not None
 
-    def send_photo(self, chat_id: int, path: str, silent: bool = True) -> bool:
-        message = {
-            "chat_id": chat_id,
-        }
+    def send_photo(self, chat_id: int, path: str, caption: str = "") -> bool:
+        message: Payload = self._generate_envelope()
+        if caption:
+            message["caption"] = caption
 
+        logger.debug("Trying to send photo '{0}' to chat ID {1}...".format(path, chat_id))
         return self._call_api("sendPhoto", data=message, attachments={"photo": path}) is not None
 
 
@@ -163,31 +179,31 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("chat_id", metavar="CHAT_ID", type=int, help="ID of the user that should receive the message.")
     parser.add_argument("--token", metavar="API_TOKEN", type=str, help="Set Bot API token.")
+    parser.add_argument("--markdown", action="store_true", help="Use Markdown formatting for caption.")
+    parser.add_argument("--silent", action="store_true", help="Do not notify recipient of the message.")
 
     subparsers = parser.add_subparsers(help="Types of messages that can be sent:", dest="mode")
 
     msg_parser = subparsers.add_parser("text", help="Text message.")
     msg_parser.add_argument("text", metavar="TEXT", type=str, help="Text of the message.")
-    msg_parser.add_argument("--markdown", action="store_true", help="Use Markdown formatting when sending.")
-    msg_parser.add_argument("--silent", action="store_true", help="Do not notify recipient of the message.")
 
     photo_parser = subparsers.add_parser("photo", help="Photo.")
     photo_parser.add_argument("path", metavar="PATH", type=str, help="Path to the photo file.")
-    photo_parser.add_argument("--silent", action="store_true", help="Do not notify recipient of the message.")
+    photo_parser.add_argument("--caption", metavar="TEXT", type=str, help="Caption for the photo.")
 
     arguments = parser.parse_args()
 
-    bot_api = TelegramBotAPI(token=arguments.token or token_from_env)
+    bot_api = TelegramBotAPI(token=arguments.token or token_from_env, chat_id=arguments.chat_id)
+    if arguments.silent:
+        bot_api.disable_notifications()
+    if arguments.markdown:
+        bot_api.set_parse_mode("markdown")
 
     if arguments.mode == "text":
-        logger.debug("Trying to send text message '{0}' to chat ID {1}...".format(arguments.text, arguments.chat_id))
-        if bot_api.send_message(
-            arguments.chat_id, arguments.text, mode="markdown" if arguments.markdown else None, silent=arguments.silent,
-        ):
+        if bot_api.send_message(arguments.chat_id, arguments.text,):
             logger.info("Successfully sent message.")
     elif arguments.mode == "photo":
-        logger.debug("Trying to send photo '{0}' to chat ID {1}...".format(arguments.path, arguments.chat_id))
-        if bot_api.send_photo(arguments.chat_id, arguments.path, silent=arguments.silent):
+        if bot_api.send_photo(arguments.chat_id, arguments.path, caption=arguments.caption):
             logger.info("Successfully sent photo.")
 
 

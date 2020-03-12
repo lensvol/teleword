@@ -179,13 +179,6 @@ def main():
 
     bot_api = TelegramBotAPI(token=arguments.token or token_from_env)
 
-    logger.debug("Trying to verify token by calling 'getMe' on Bot API...")
-    result = bot_api.get_me()
-    if result is not None:
-        logger.info("Your username is {0} (ID: {1})".format(result["username"], result["id"]))
-    else:
-        logger.info("Failed to call 'getMe' on Bot API. :(")
-
     if arguments.mode == "text":
         logger.debug("Trying to send text message '{0}' to chat ID {1}...".format(arguments.text, arguments.chat_id))
         if bot_api.send_message(

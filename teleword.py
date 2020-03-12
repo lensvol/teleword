@@ -9,8 +9,12 @@ import random
 import ssl
 import string
 from http.client import HTTPSConnection
-from typing import Tuple, Union, Dict, Optional, Iterable
+from typing import Tuple, Union, Dict, Optional, Iterable, Mapping
 from urllib.parse import urlparse
+
+Attachments = Mapping[Tuple[str, str], bytes]
+Payload = Mapping[str, Union[int, str]]
+Response = Mapping[str, Union[int, str]]
 
 TELEGRAM_API_ENDPOINT = "https://api.telegram.org/bot"
 
@@ -24,8 +28,8 @@ def setup_logging() -> None:
 def make_http_request(
     url: str,
     insecure: bool = True,
-    data: Optional[Dict[str, Union[int, str]]] = None,
-    files: Optional[Dict[Tuple[str, str], bytes]] = None,
+    data: Optional[Payload] = None,
+    files: Optional[Attachments] = None,
 ) -> Tuple[int, bytes]:
     if data is None:
         data = {}
@@ -52,7 +56,7 @@ def make_http_request(
     return r.status, r.read()
 
 
-def encode_multipart_formdata(data: Dict[str, Union[str, int]], files: Dict[Tuple[str, str], bytes]):
+def encode_multipart_formdata(data: Payload, files: Attachments):
     """
     Code loosely adapted from Jason Kulatunga's answer on SO: https://stackoverflow.com/a/29332627
     (with a couple fixes to make it run on Python 3).
@@ -101,7 +105,7 @@ class TelegramBotAPI:
         self.token = token
 
     def _call_api(
-        self, method_name: str, data: Dict[str, Union[int, str]] = None, attachments: Dict[str, str] = None
+        self, method_name: str, data: Payload = None, attachments: Mapping[str, str] = None
     ) -> Optional[bytes]:
         if attachments is None:
             attachments = {}
@@ -125,25 +129,25 @@ class TelegramBotAPI:
 
         return response
 
-    def get_me(self) -> Optional[Dict[str, Union[str, int]]]:
+    def get_me(self) -> Optional[Response]:
         response = self._call_api("getMe")
         if response is not None:
             return json.loads(response)["result"]
 
         return None
 
-    def send_message(self, chat_id, text, silent=True, mode=None):
-        message = {
+    def send_message(self, chat_id: int, text: str, silent: bool = True, mode: bool = None) -> bool:
+        message: Dict[str, Union[str, int, bool]] = {
             "chat_id": chat_id,
             "text": text,
-            "disable_notification": silent,
+            "disable_notification": bool(silent),
         }
         if mode:
             message["parse_mode"] = mode
 
-        return self._call_api("sendMessage", data=message) is not None
+        return self._call_api("sendMessage", data=message, attachments={}) is not None
 
-    def send_photo(self, chat_id, path, silent=True):
+    def send_photo(self, chat_id: int, path: str, silent: bool = True) -> bool:
         message = {
             "chat_id": chat_id,
         }

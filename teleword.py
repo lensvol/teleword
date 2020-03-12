@@ -1,13 +1,15 @@
 import argparse
+import http
 import io
 import json
 import logging
+import mimetypes
 import os
 import random
 import ssl
 import string
 from http.client import HTTPSConnection
-from typing import Tuple, Union, Dict, Optional
+from typing import Tuple, Union, Dict, Optional, Iterable
 from urllib.parse import urlparse
 
 TELEGRAM_API_ENDPOINT = "https://api.telegram.org/bot"
@@ -20,14 +22,20 @@ def setup_logging() -> None:
 
 
 def make_http_request(
-    url: str, insecure: bool = True, data: Optional[Dict[str, Union[int, str]]] = None
+    url: str,
+    insecure: bool = True,
+    data: Optional[Dict[str, Union[int, str]]] = None,
+    files: Optional[Dict[Tuple[str, str], bytes]] = None,
 ) -> Tuple[int, bytes]:
     if data is None:
         data = {}
 
+    if files is None:
+        files = {}
+
     schema, netloc, url, params, query, fragments = urlparse(url)
     logger.debug("Sending POST request to {0}".format(url))
-    body, boundary = encode_multipart_formdata(data)
+    body, boundary = encode_multipart_formdata(data, files)
 
     connection = HTTPSConnection(netloc, context=ssl._create_unverified_context() if insecure else None,)
     connection.connect()
@@ -40,10 +48,11 @@ def make_http_request(
     connection.send(body)
 
     r = connection.getresponse()
+
     return r.status, r.read()
 
 
-def encode_multipart_formdata(data: Dict[str, Union[str, int]]):
+def encode_multipart_formdata(data: Dict[str, Union[str, int]], files: Dict[Tuple[str, str], bytes]):
     """
     Code loosely adapted from Jason Kulatunga's answer on SO: https://stackoverflow.com/a/29332627
     (with a couple fixes to make it run on Python 3).
@@ -64,6 +73,24 @@ def encode_multipart_formdata(data: Dict[str, Union[str, int]]):
             str(value),
         ]
         body.write(("\r\n".join(block)).encode())
+
+    for (field, filename), contents in files.items():
+        if append_crlf:
+            body.write(b"\r\n")
+        append_crlf = True
+
+        content_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+        block = [
+            "--{0}".format(boundary),
+            'Content-Disposition: form-data; name="{0}"; filename="{1}"'.format(field, filename),
+            "Content-Type: {0}".format(content_type),
+            "Content-Length: {0}".format(len(contents)),
+            "",
+        ]
+        body.write(("\r\n".join(block)).encode())
+        body.write(b"\r\n")
+        body.write(contents)
+
     body.write(b"\r\n--" + boundary.encode() + b"--\r\n\r\n")
 
     return body.getvalue(), boundary
@@ -73,9 +100,20 @@ class TelegramBotAPI:
     def __init__(self, token: str) -> None:
         self.token = token
 
-    def _call_api(self, method_name: str, data: Dict[str, Union[int, str]] = None) -> Optional[bytes]:
+    def _call_api(
+        self, method_name: str, data: Dict[str, Union[int, str]] = None, attachments: Dict[str, str] = None
+    ) -> Optional[bytes]:
+        if attachments is None:
+            attachments = {}
+
+        files = {}
+        for field, path in attachments.items():
+            with open(path, "rb") as fp:
+                _, filename = os.path.split(path)
+                files[(field, filename)] = fp.read()
+
         status_code, response = make_http_request(
-            "{0}{1}/{2}".format(TELEGRAM_API_ENDPOINT, self.token, method_name), insecure=True, data=data,
+            "{0}{1}/{2}".format(TELEGRAM_API_ENDPOINT, self.token, method_name), insecure=True, data=data, files=files,
         )
 
         logger.debug("Response status: {0}".format(status_code))
@@ -105,6 +143,13 @@ class TelegramBotAPI:
 
         return self._call_api("sendMessage", data=message) is not None
 
+    def send_photo(self, chat_id, path, silent=True):
+        message = {
+            "chat_id": chat_id,
+        }
+
+        return self._call_api("sendPhoto", data=message, attachments={"photo": path}) is not None
+
 
 def main():
     setup_logging()
@@ -122,10 +167,11 @@ def main():
     msg_parser.add_argument("--markdown", action="store_true", help="Use Markdown formatting when sending.")
     msg_parser.add_argument("--silent", action="store_true", help="Do not notify recipient of the message.")
 
+    photo_parser = subparsers.add_parser("photo", help="Photo.")
+    photo_parser.add_argument("path", metavar="PATH", type=str, help="Path to the photo file.")
+    photo_parser.add_argument("--silent", action="store_true", help="Do not notify recipient of the message.")
+
     arguments = parser.parse_args()
-    if arguments.mode != "text":
-        logger.error("Unknown mode: {0}".format(arguments.mode))
-        exit(-1)
 
     bot_api = TelegramBotAPI(token=arguments.token or token_from_env)
 
@@ -136,11 +182,16 @@ def main():
     else:
         logger.info("Failed to call 'getMe' on Bot API. :(")
 
-    logger.debug("Trying to send message '{0}' to chat ID {1}...".format(arguments.text, arguments.chat_id))
-    if bot_api.send_message(
-        arguments.chat_id, arguments.text, mode="markdown" if arguments.markdown else None, silent=arguments.silent,
-    ):
-        logger.info("Successfully sent message.")
+    if arguments.mode == "text":
+        logger.debug("Trying to send text message '{0}' to chat ID {1}...".format(arguments.text, arguments.chat_id))
+        if bot_api.send_message(
+            arguments.chat_id, arguments.text, mode="markdown" if arguments.markdown else None, silent=arguments.silent,
+        ):
+            logger.info("Successfully sent message.")
+    elif arguments.mode == "photo":
+        logger.debug("Trying to send photo '{0}' to chat ID {1}...".format(arguments.path, arguments.chat_id))
+        if bot_api.send_photo(arguments.chat_id, arguments.path, silent=arguments.silent):
+            logger.info("Successfully sent photo.")
 
 
 if __name__ == "__main__":

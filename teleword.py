@@ -157,7 +157,7 @@ class TelegramBotAPI:
 
     def send_message(self, chat_id: int, text: str) -> bool:
         message: Payload = self._generate_envelope()
-        message["text"]  = text
+        message["text"] = text
 
         logger.debug("Trying to send text message '{0}' to chat ID {1}...".format(text, chat_id))
         return self._call_api("sendMessage", data=message, attachments={}) is not None
@@ -169,6 +169,16 @@ class TelegramBotAPI:
 
         logger.debug("Trying to send photo '{0}' to chat ID {1}...".format(path, chat_id))
         return self._call_api("sendPhoto", data=message, attachments={"photo": path}) is not None
+
+    def send_video(self, chat_id: int, path: str, caption: str = "", streaming: bool = False) -> bool:
+        message: Payload = self._generate_envelope()
+        if caption:
+            message["caption"] = caption
+        if streaming:
+            message["supports_streaming"] = True
+
+        logger.debug("Trying to send video '{0}' to chat ID {1}...".format(path, chat_id))
+        return self._call_api("sendVideo", data=message, attachments={"video": path}) is not None
 
 
 def main():
@@ -191,6 +201,11 @@ def main():
     photo_parser.add_argument("path", metavar="PATH", type=str, help="Path to the photo file.")
     photo_parser.add_argument("--caption", metavar="TEXT", type=str, help="Caption for the photo.")
 
+    video_parser = subparsers.add_parser("video", help="Video file.")
+    video_parser.add_argument("path", metavar="PATH", type=str, help="Path to the video file.")
+    video_parser.add_argument("--caption", metavar="TEXT", type=str, help="Caption for the photo.")
+    video_parser.add_argument("--streaming", action="store_true", help="This video file supports streaming.")
+
     arguments = parser.parse_args()
 
     bot_api = TelegramBotAPI(token=arguments.token or token_from_env, chat_id=arguments.chat_id)
@@ -205,6 +220,9 @@ def main():
     elif arguments.mode == "photo":
         if bot_api.send_photo(arguments.chat_id, arguments.path, caption=arguments.caption):
             logger.info("Successfully sent photo.")
+    elif arguments.mode == "video":
+        if bot_api.send_video(arguments.chat_id, arguments.path, caption=arguments.caption, streaming=arguments.streaming):
+            logger.info("Successfully sent video.")
 
 
 if __name__ == "__main__":

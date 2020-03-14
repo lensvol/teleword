@@ -192,6 +192,31 @@ def sanity_check_upload(expected_mimetype: str, path_to_upload: str, limit: int)
         raise BadUploadError("File should have type '{0}', found '{1}'".format(expected_mimetype, actual_mimetype))
 
 
+def parse_cmdline_arguments():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("chat_id", metavar="CHAT_ID", type=int, help="ID of the chat that should receive the message.")
+    parser.add_argument("--token", metavar="API_TOKEN", type=str, help="Set Bot API token.")
+    parser.add_argument("--markdown", action="store_true", help="Use Markdown formatting for caption.")
+    parser.add_argument("--silent", action="store_true", help="Do not notify recipient of the message.")
+    parser.add_argument("--force", action="store_true", help="Skip sanity checks.")
+
+    subparsers = parser.add_subparsers(help="Types of messages that can be sent:", dest="mode")
+
+    msg_parser = subparsers.add_parser("text", help="Text message.")
+    msg_parser.add_argument("text", metavar="TEXT", type=str, help="Text of the message.")
+
+    photo_parser = subparsers.add_parser("photo", help="Photo.")
+    photo_parser.add_argument("path", metavar="PATH", type=str, help="Path to the photo file.")
+    photo_parser.add_argument("--caption", metavar="TEXT", type=str, help="Caption for the photo.")
+
+    video_parser = subparsers.add_parser("video", help="Video file.")
+    video_parser.add_argument("path", metavar="PATH", type=str, help="Path to the video file.")
+    video_parser.add_argument("--caption", metavar="TEXT", type=str, help="Caption for the photo.")
+    video_parser.add_argument("--streaming", action="store_true", help="This video file supports streaming.")
+
+    return parser.parse_args()
+
+
 def main():
     setup_logging()
 
@@ -209,14 +234,16 @@ def main():
             if bot_api.send_message(arguments.chat_id, arguments.text):
                 logger.info("Successfully sent message.")
         elif arguments.mode == "photo":
-            sanity_check_upload("image/jpeg", arguments.path, PHOTO_SIZE_LIMIT)
+            if not arguments.force:
+                sanity_check_upload("image/jpeg", arguments.path, PHOTO_SIZE_LIMIT)
 
             if bot_api.send_photo(arguments.chat_id, arguments.path, caption=arguments.caption):
                 logger.info("Successfully sent photo.")
             else:
                 logger.error("Failed to send photo.")
         elif arguments.mode == "video":
-            sanity_check_upload("video/mp4", arguments.path, VIDEO_SIZE_LIMIT)
+            if not arguments.force:
+                sanity_check_upload("video/mp4", arguments.path, VIDEO_SIZE_LIMIT)
 
             if bot_api.send_video(
                 arguments.chat_id, arguments.path, caption=arguments.caption, streaming=arguments.streaming
@@ -227,26 +254,6 @@ def main():
     except BadUploadError as exc:
         logger.error(str(exc))
         sys.exit(-1)
-
-
-def parse_cmdline_arguments():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("chat_id", metavar="CHAT_ID", type=int, help="ID of the chat that should receive the message.")
-    parser.add_argument("--token", metavar="API_TOKEN", type=str, help="Set Bot API token.")
-    parser.add_argument("--markdown", action="store_true", help="Use Markdown formatting for caption.")
-    parser.add_argument("--silent", action="store_true", help="Do not notify recipient of the message.")
-    subparsers = parser.add_subparsers(help="Types of messages that can be sent:", dest="mode")
-    msg_parser = subparsers.add_parser("text", help="Text message.")
-    msg_parser.add_argument("text", metavar="TEXT", type=str, help="Text of the message.")
-    photo_parser = subparsers.add_parser("photo", help="Photo.")
-    photo_parser.add_argument("path", metavar="PATH", type=str, help="Path to the photo file.")
-    photo_parser.add_argument("--caption", metavar="TEXT", type=str, help="Caption for the photo.")
-    video_parser = subparsers.add_parser("video", help="Video file.")
-    video_parser.add_argument("path", metavar="PATH", type=str, help="Path to the video file.")
-    video_parser.add_argument("--caption", metavar="TEXT", type=str, help="Caption for the photo.")
-    video_parser.add_argument("--streaming", action="store_true", help="This video file supports streaming.")
-    arguments = parser.parse_args()
-    return arguments
 
 
 if __name__ == "__main__":

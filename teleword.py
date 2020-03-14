@@ -1,5 +1,4 @@
 import argparse
-import http
 import io
 import json
 import logging
@@ -8,15 +7,23 @@ import os
 import random
 import ssl
 import string
+import sys
 from http.client import HTTPSConnection
-from typing import Tuple, Union, Dict, Optional, Iterable, Mapping
+from typing import Tuple, Union, Dict, Optional, Mapping
 from urllib.parse import urlparse
 
 Attachments = Mapping[Tuple[str, str], bytes]
 Payload = Dict[str, Union[str, int]]
 Response = Mapping[str, Union[int, str]]
 
+
+class BadUploadError(Exception):
+    pass
+
+
 TELEGRAM_API_ENDPOINT = "https://api.telegram.org/bot"
+VIDEO_SIZE_LIMIT = 20 * 1024 * 1024
+PHOTO_SIZE_LIMIT = 5 * 1024 * 1024
 
 logger = logging.getLogger("teleword")
 
@@ -26,7 +33,7 @@ def setup_logging() -> None:
 
 
 def make_http_request(
-    url: str, insecure: bool = True, data: Optional[Payload] = None, files: Optional[Attachments] = None,
+    url: str, insecure: bool = True, data: Optional[Payload] = None, files: Optional[Attachments] = None
 ) -> Tuple[int, bytes]:
     if data is None:
         data = {}
@@ -38,7 +45,7 @@ def make_http_request(
     logger.debug("Sending POST request to {0}".format(url))
     body, boundary = encode_multipart_formdata(data, files)
 
-    connection = HTTPSConnection(netloc, context=ssl._create_unverified_context() if insecure else None,)
+    connection = HTTPSConnection(netloc, context=ssl._create_unverified_context() if insecure else None)
     connection.connect()
 
     connection.putrequest("POST", url)
@@ -67,12 +74,7 @@ def encode_multipart_formdata(data: Payload, files: Attachments):
             body.write(b"\r\n")
         append_crlf = True
 
-        block = [
-            "--{0}".format(boundary),
-            'Content-Disposition: form-data; name="{0}"'.format(key),
-            "",
-            str(value),
-        ]
+        block = ["--{0}".format(boundary), 'Content-Disposition: form-data; name="{0}"'.format(key), "", str(value)]
         body.write(("\r\n".join(block)).encode())
 
     for (field, filename), contents in files.items():
@@ -114,10 +116,7 @@ class TelegramBotAPI:
         self.parse_mode = mode
 
     def _generate_envelope(self) -> Payload:
-        envelope: Payload = {
-            "disable_notifications": "true" if self.silent else "false",
-            "chat_id": self.chat_id,
-        }
+        envelope: Payload = {"disable_notifications": "true" if self.silent else "false", "chat_id": self.chat_id}
         if self.parse_mode:
             envelope["parse_mode"] = self.parse_mode
 
@@ -136,7 +135,7 @@ class TelegramBotAPI:
                 files[(field, filename)] = fp.read()
 
         status_code, response = make_http_request(
-            "{0}{1}/{2}".format(TELEGRAM_API_ENDPOINT, self.token, method_name), insecure=True, data=data, files=files,
+            "{0}{1}/{2}".format(TELEGRAM_API_ENDPOINT, self.token, method_name), insecure=True, data=data, files=files
         )
 
         logger.debug("Response status: {0}".format(status_code))
@@ -181,48 +180,73 @@ class TelegramBotAPI:
         return self._call_api("sendVideo", data=message, attachments={"video": path}) is not None
 
 
+def sanity_check_upload(expected_mimetype: str, path_to_upload: str, limit: int):
+    stat_result = os.stat(path_to_upload)
+    if stat_result.st_size > limit:
+        raise BadUploadError(
+            "File is too big for upload ({0} MB), limit is 5 MB".format(stat_result.st_size // (1024 * 1024))
+        )
+
+    actual_mimetype, _ = mimetypes.guess_type(path_to_upload)
+    if actual_mimetype != expected_mimetype:
+        raise BadUploadError("File should have type '{0}', found '{1}'".format(expected_mimetype, actual_mimetype))
+
+
 def main():
     setup_logging()
 
-    token_from_env = os.environ.get("TELEGRAM_BOT_TOKEN")
+    arguments = parse_cmdline_arguments()
 
+    try:
+        token_from_env = os.environ.get("TELEGRAM_BOT_TOKEN")
+        bot_api = TelegramBotAPI(token=arguments.token or token_from_env, chat_id=arguments.chat_id)
+        if arguments.silent:
+            bot_api.disable_notifications()
+        if arguments.markdown:
+            bot_api.set_parse_mode("markdown")
+
+        if arguments.mode == "text":
+            if bot_api.send_message(arguments.chat_id, arguments.text):
+                logger.info("Successfully sent message.")
+        elif arguments.mode == "photo":
+            sanity_check_upload("image/jpeg", arguments.path, PHOTO_SIZE_LIMIT)
+
+            if bot_api.send_photo(arguments.chat_id, arguments.path, caption=arguments.caption):
+                logger.info("Successfully sent photo.")
+            else:
+                logger.error("Failed to send photo.")
+        elif arguments.mode == "video":
+            sanity_check_upload("video/mp4", arguments.path, VIDEO_SIZE_LIMIT)
+
+            if bot_api.send_video(
+                arguments.chat_id, arguments.path, caption=arguments.caption, streaming=arguments.streaming
+            ):
+                logger.info("Successfully sent video.")
+            else:
+                logger.error("Failed to send video.")
+    except BadUploadError as exc:
+        logger.error(str(exc))
+        sys.exit(-1)
+
+
+def parse_cmdline_arguments():
     parser = argparse.ArgumentParser()
-    parser.add_argument("chat_id", metavar="CHAT_ID", type=int, help="ID of the user that should receive the message.")
+    parser.add_argument("chat_id", metavar="CHAT_ID", type=int, help="ID of the chat that should receive the message.")
     parser.add_argument("--token", metavar="API_TOKEN", type=str, help="Set Bot API token.")
     parser.add_argument("--markdown", action="store_true", help="Use Markdown formatting for caption.")
     parser.add_argument("--silent", action="store_true", help="Do not notify recipient of the message.")
-
     subparsers = parser.add_subparsers(help="Types of messages that can be sent:", dest="mode")
-
     msg_parser = subparsers.add_parser("text", help="Text message.")
     msg_parser.add_argument("text", metavar="TEXT", type=str, help="Text of the message.")
-
     photo_parser = subparsers.add_parser("photo", help="Photo.")
     photo_parser.add_argument("path", metavar="PATH", type=str, help="Path to the photo file.")
     photo_parser.add_argument("--caption", metavar="TEXT", type=str, help="Caption for the photo.")
-
     video_parser = subparsers.add_parser("video", help="Video file.")
     video_parser.add_argument("path", metavar="PATH", type=str, help="Path to the video file.")
     video_parser.add_argument("--caption", metavar="TEXT", type=str, help="Caption for the photo.")
     video_parser.add_argument("--streaming", action="store_true", help="This video file supports streaming.")
-
     arguments = parser.parse_args()
-
-    bot_api = TelegramBotAPI(token=arguments.token or token_from_env, chat_id=arguments.chat_id)
-    if arguments.silent:
-        bot_api.disable_notifications()
-    if arguments.markdown:
-        bot_api.set_parse_mode("markdown")
-
-    if arguments.mode == "text":
-        if bot_api.send_message(arguments.chat_id, arguments.text,):
-            logger.info("Successfully sent message.")
-    elif arguments.mode == "photo":
-        if bot_api.send_photo(arguments.chat_id, arguments.path, caption=arguments.caption):
-            logger.info("Successfully sent photo.")
-    elif arguments.mode == "video":
-        if bot_api.send_video(arguments.chat_id, arguments.path, caption=arguments.caption, streaming=arguments.streaming):
-            logger.info("Successfully sent video.")
+    return arguments
 
 
 if __name__ == "__main__":

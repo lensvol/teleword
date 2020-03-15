@@ -9,7 +9,7 @@ import ssl
 import string
 import sys
 from http.client import HTTPSConnection
-from typing import Tuple, Union, Dict, Optional, Mapping
+from typing import Tuple, Union, Dict, Optional, Mapping, Iterable, Any
 from urllib.parse import urlparse
 
 Attachments = Mapping[Tuple[str, str], bytes]
@@ -28,8 +28,36 @@ PHOTO_SIZE_LIMIT = 5 * 1024 * 1024
 logger = logging.getLogger("teleword")
 
 
-def setup_logging() -> None:
+class RedactingFilter(logging.Filter):
+    """
+    Taken almost verbatim from
+    https://relaxdiego.com/2014/07/logging-in-python.html#redacting-logs-using-a-filter
+    """
+
+    def __init__(self, patterns: Iterable[str]):
+        super(RedactingFilter, self).__init__()
+        self._patterns = patterns
+
+    def filter(self, record):
+        record.msg = self.redact(record.msg)
+        if isinstance(record.args, dict):
+            for k in record.args.keys():
+                record.args[k] = self.redact(record.args[k])
+        else:
+            record.args = tuple(self.redact(arg) for arg in record.args)
+        return True
+
+    def redact(self, msg: Any):
+        msg = isinstance(msg, str) and msg or str(msg)
+        for pattern in self._patterns:
+            msg = msg.replace(pattern, "<REDACTED>")
+        return msg
+
+
+def setup_logging(redacted_patterns: Iterable[str]) -> None:
     logging.basicConfig(format="[ %(asctime)s | %(levelname)-6s ] %(message)s", level=logging.DEBUG)
+    redacting_filter = RedactingFilter([p for p in redacted_patterns if p])
+    logging.getLogger("teleword").addFilter(redacting_filter)
 
 
 def make_http_request(
@@ -223,11 +251,10 @@ def bail(message):
 
 
 def main():
-    setup_logging()
-
     arguments = parse_cmdline_arguments()
-
     token_from_env = os.environ.get("TELEGRAM_BOT_TOKEN")
+
+    setup_logging([token_from_env or arguments.token])
 
     if not token_from_env and not arguments.token:
         bail("Telegram API token not specified as an argument and not set in environment! Exiting...")

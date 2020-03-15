@@ -217,13 +217,22 @@ def parse_cmdline_arguments():
     return parser.parse_args()
 
 
+def bail(message):
+    logger.error(message)
+    sys.exit(-1)
+
+
 def main():
     setup_logging()
 
     arguments = parse_cmdline_arguments()
 
+    token_from_env = os.environ.get("TELEGRAM_BOT_TOKEN")
+
+    if not token_from_env and not arguments.token:
+        bail("Telegram API token not specified as an argument and not set in environment! Exiting...")
+
     try:
-        token_from_env = os.environ.get("TELEGRAM_BOT_TOKEN")
         bot_api = TelegramBotAPI(token=arguments.token or token_from_env, chat_id=arguments.chat_id)
         if arguments.silent:
             bot_api.disable_notifications()
@@ -240,7 +249,7 @@ def main():
             if bot_api.send_photo(arguments.chat_id, arguments.path, caption=arguments.caption):
                 logger.info("Successfully sent photo.")
             else:
-                logger.error("Failed to send photo.")
+                bail("Failed to send photo.")
         elif arguments.mode == "video":
             if not arguments.force:
                 sanity_check_upload("video/mp4", arguments.path, VIDEO_SIZE_LIMIT)
@@ -250,10 +259,9 @@ def main():
             ):
                 logger.info("Successfully sent video.")
             else:
-                logger.error("Failed to send video.")
+                bail("Failed to send video.")
     except BadUploadError as exc:
-        logger.error(str(exc))
-        sys.exit(-1)
+        bail(str(exc))
 
 
 if __name__ == "__main__":

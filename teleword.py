@@ -12,20 +12,20 @@ from http.client import HTTPSConnection
 from typing import Tuple, Union, Dict, Optional, Mapping, Iterable, Any
 from urllib.parse import urlparse
 
+
+__VERSION__ = "0.1.0"
+
 Attachments = Mapping[Tuple[str, str], bytes]
 Payload = Dict[str, Union[str, int]]
 Response = Mapping[str, Union[int, str]]
-
-
-class BadUploadError(Exception):
-    pass
-
 
 TELEGRAM_API_ENDPOINT = "https://api.telegram.org/bot"
 VIDEO_SIZE_LIMIT = 20 * 1024 * 1024
 PHOTO_SIZE_LIMIT = 5 * 1024 * 1024
 
-logger = logging.getLogger("teleword")
+
+class BadUploadError(Exception):
+    pass
 
 
 class RedactingFilter(logging.Filter):
@@ -54,8 +54,13 @@ class RedactingFilter(logging.Filter):
         return msg
 
 
-def setup_logging(redacted_patterns: Iterable[str]) -> None:
-    logging.basicConfig(format="[ %(asctime)s | %(levelname)-6s ] %(message)s", level=logging.DEBUG)
+logger = logging.getLogger("teleword")
+
+
+def setup_logging(redacted_patterns: Iterable[str], verbose: bool = False) -> None:
+    logging.basicConfig(
+        format="[ %(asctime)s | %(levelname)-6s ] %(message)s", level=logging.DEBUG if verbose else logging.INFO
+    )
     redacting_filter = RedactingFilter([p for p in redacted_patterns if p])
     logging.getLogger("teleword").addFilter(redacting_filter)
 
@@ -227,6 +232,8 @@ def parse_cmdline_arguments():
     parser.add_argument("--markdown", action="store_true", help="Use Markdown formatting for caption.")
     parser.add_argument("--silent", action="store_true", help="Do not notify recipient of the message.")
     parser.add_argument("--force", action="store_true", help="Skip sanity checks.")
+    parser.add_argument("--verbose", action="store_true", help="Log debug information.")
+    parser.add_argument('--version', action='version', version="%(prog)s {0}".format(__VERSION__))
 
     subparsers = parser.add_subparsers(help="Types of messages that can be sent:", dest="mode")
 
@@ -254,7 +261,7 @@ def main():
     arguments = parse_cmdline_arguments()
     token_from_env = os.environ.get("TELEGRAM_BOT_TOKEN")
 
-    setup_logging([token_from_env or arguments.token])
+    setup_logging([token_from_env or arguments.token], verbose=arguments.verbose)
 
     if not token_from_env and not arguments.token:
         bail("Telegram API token not specified as an argument and not set in environment! Exiting...")

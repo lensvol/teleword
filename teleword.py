@@ -16,7 +16,7 @@ from urllib.parse import urlparse
 __VERSION__ = "0.1.0"
 
 Attachments = Mapping[Tuple[str, str], bytes]
-Payload = Dict[str, Union[str, int]]
+Envelope = Dict[str, Union[str, int]]
 Response = Mapping[str, Union[int, str]]
 
 TELEGRAM_API_ENDPOINT = "https://api.telegram.org/bot"
@@ -47,7 +47,8 @@ class RedactingFilter(logging.Filter):
             record.args = tuple(self.redact(arg) for arg in record.args)
         return True
 
-    def redact(self, msg: Any):
+    def redact(self, msg):
+        # type: (str) -> str
         msg = isinstance(msg, str) and msg or str(msg)
         for pattern in self._patterns:
             msg = msg.replace(pattern, "<REDACTED>")
@@ -57,7 +58,8 @@ class RedactingFilter(logging.Filter):
 logger = logging.getLogger("teleword")
 
 
-def setup_logging(redacted_patterns: Iterable[str], verbose: bool = False) -> None:
+def setup_logging(redacted_patterns, verbose=False):
+    # type: (Iterable[str], bool) -> None
     logging.basicConfig(
         format="[ %(asctime)s | %(levelname)-6s ] %(message)s", level=logging.DEBUG if verbose else logging.INFO
     )
@@ -66,8 +68,9 @@ def setup_logging(redacted_patterns: Iterable[str], verbose: bool = False) -> No
 
 
 def make_http_request(
-    url: str, insecure: bool = True, data: Optional[Payload] = None, files: Optional[Attachments] = None
-) -> Tuple[int, bytes]:
+    url, insecure=True, data=None, files=None
+):
+    # type: (str, bool, Optional[Envelope], Optional[Attachments]) -> Tuple[int, bytes]
     if data is None:
         data = {}
 
@@ -93,11 +96,12 @@ def make_http_request(
     return r.status, r.read()
 
 
-def encode_multipart_formdata(data: Payload, files: Attachments):
-    """
-    Code loosely adapted from Jason Kulatunga's answer on SO: https://stackoverflow.com/a/29332627
-    (with a couple fixes to make it run on Python 3).
-    """
+def encode_multipart_formdata(data, files):
+    # type: (Envelope, Attachments) -> Tuple[bytes, str]
+
+    # Code loosely adapted from Jason Kulatunga's answer on SO: https://stackoverflow.com/a/29332627
+    # (with a couple fixes to make it run on Python 3).
+
     boundary = "".join(random.choice(string.ascii_uppercase + string.digits) for _ in range(64))
     body = io.BytesIO()
     append_crlf = False
@@ -133,31 +137,38 @@ def encode_multipart_formdata(data: Payload, files: Attachments):
 
 
 class TelegramBotAPI:
-    def __init__(self, token: str, chat_id: int) -> None:
-        self.token: str = token
-        self.silent: bool = False
-        self.parse_mode: Optional[str] = None
-        self.chat_id: int = chat_id
+    def __init__(self, token, chat_id):
+        # type: (str, int) -> None
 
-    def disable_notifications(self) -> None:
+        self.token = token  # type: str
+        self.silent = False  # type: bool
+        self.parse_mode = None  # type: Optional[str]
+        self.chat_id = chat_id  # type: int
+
+    def disable_notifications(self):
+        # type: () -> None
         self.silent = True
 
-    def enable_notifications(self) -> None:
+    def enable_notifications(self):
+        # type: () -> None
         self.silent = False
 
-    def set_parse_mode(self, mode: str) -> None:
+    def set_parse_mode(self, mode):
+        # type: (str) -> None
         self.parse_mode = mode
 
-    def _generate_envelope(self) -> Payload:
-        envelope: Payload = {"disable_notifications": "true" if self.silent else "false", "chat_id": self.chat_id}
+    def _generate_envelope(self):
+        # type: () -> Envelope
+        envelope = {"disable_notifications": "true" if self.silent else "false", "chat_id": self.chat_id}  # type: Envelope
         if self.parse_mode:
             envelope["parse_mode"] = self.parse_mode
 
         return envelope
 
     def _call_api(
-        self, method_name: str, data: Payload = None, attachments: Mapping[str, str] = None
-    ) -> Optional[bytes]:
+        self, method_name, data=None, attachments=None
+    ):
+        # type: (str, Envelope, Mapping[str, str]) -> Optional[bytes]
         if attachments is None:
             attachments = {}
 
@@ -180,30 +191,34 @@ class TelegramBotAPI:
 
         return response
 
-    def get_me(self) -> Optional[Response]:
+    def get_me(self):
+        # type: () -> Optional[Response]
         response = self._call_api("getMe")
         if response is not None:
             return json.loads(response)["result"]
 
         return None
 
-    def send_message(self, chat_id: int, text: str) -> bool:
-        message: Payload = self._generate_envelope()
+    def send_message(self, chat_id, text):
+        # type: (int, str) -> bool
+        message = self._generate_envelope()  # type: Envelope
         message["text"] = text
 
         logger.debug("Trying to send text message '{0}' to chat ID {1}...".format(text, chat_id))
         return self._call_api("sendMessage", data=message, attachments={}) is not None
 
-    def send_photo(self, chat_id: int, path: str, caption: str = "") -> bool:
-        message: Payload = self._generate_envelope()
+    def send_photo(self, chat_id, path, caption=""):
+        # type: (int, str, str) -> bool
+        message = self._generate_envelope()  # type: Envelope
         if caption:
             message["caption"] = caption
 
         logger.debug("Trying to send photo '{0}' to chat ID {1}...".format(path, chat_id))
         return self._call_api("sendPhoto", data=message, attachments={"photo": path}) is not None
 
-    def send_video(self, chat_id: int, path: str, caption: str = "", streaming: bool = False) -> bool:
-        message: Payload = self._generate_envelope()
+    def send_video(self, chat_id, path, caption="", streaming=False):
+        # type: (int, str, str, bool) -> bool
+        message = self._generate_envelope()  # type: Envelope
         if caption:
             message["caption"] = caption
         if streaming:
@@ -213,7 +228,8 @@ class TelegramBotAPI:
         return self._call_api("sendVideo", data=message, attachments={"video": path}) is not None
 
 
-def sanity_check_upload(expected_mimetype: str, path_to_upload: str, limit: int):
+def sanity_check_upload(expected_mimetype, path_to_upload, limit):
+    # type: (str, str, int) -> None
     stat_result = os.stat(path_to_upload)
     if stat_result.st_size > limit:
         raise BadUploadError(

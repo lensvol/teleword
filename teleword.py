@@ -9,11 +9,39 @@ import ssl
 import string
 import sys
 from http.client import HTTPSConnection
+from tempfile import mkstemp
 from typing import Tuple, Union, Dict, Optional, Mapping, Iterable, Any
 from urllib.parse import urlparse
 
 
 __VERSION__ = "0.1.0"
+
+GODADDY_ROOT_CERTIFICATE = """
+-----BEGIN CERTIFICATE-----
+MIIEADCCAuigAwIBAgIBADANBgkqhkiG9w0BAQUFADBjMQswCQYDVQQGEwJVUzEh
+MB8GA1UEChMYVGhlIEdvIERhZGR5IEdyb3VwLCBJbmMuMTEwLwYDVQQLEyhHbyBE
+YWRkeSBDbGFzcyAyIENlcnRpZmljYXRpb24gQXV0aG9yaXR5MB4XDTA0MDYyOTE3
+MDYyMFoXDTM0MDYyOTE3MDYyMFowYzELMAkGA1UEBhMCVVMxITAfBgNVBAoTGFRo
+ZSBHbyBEYWRkeSBHcm91cCwgSW5jLjExMC8GA1UECxMoR28gRGFkZHkgQ2xhc3Mg
+MiBDZXJ0aWZpY2F0aW9uIEF1dGhvcml0eTCCASAwDQYJKoZIhvcNAQEBBQADggEN
+ADCCAQgCggEBAN6d1+pXGEmhW+vXX0iG6r7d/+TvZxz0ZWizV3GgXne77ZtJ6XCA
+PVYYYwhv2vLM0D9/AlQiVBDYsoHUwHU9S3/Hd8M+eKsaA7Ugay9qK7HFiH7Eux6w
+wdhFJ2+qN1j3hybX2C32qRe3H3I2TqYXP2WYktsqbl2i/ojgC95/5Y0V4evLOtXi
+EqITLdiOr18SPaAIBQi2XKVlOARFmR6jYGB0xUGlcmIbYsUfb18aQr4CUWWoriMY
+avx4A6lNf4DD+qta/KFApMoZFv6yyO9ecw3ud72a9nmYvLEHZ6IVDd2gWMZEewo+
+YihfukEHU1jPEX44dMX4/7VpkI+EdOqXG68CAQOjgcAwgb0wHQYDVR0OBBYEFNLE
+sNKR1EwRcbNhyz2h/t2oatTjMIGNBgNVHSMEgYUwgYKAFNLEsNKR1EwRcbNhyz2h
+/t2oatTjoWekZTBjMQswCQYDVQQGEwJVUzEhMB8GA1UEChMYVGhlIEdvIERhZGR5
+IEdyb3VwLCBJbmMuMTEwLwYDVQQLEyhHbyBEYWRkeSBDbGFzcyAyIENlcnRpZmlj
+YXRpb24gQXV0aG9yaXR5ggEAMAwGA1UdEwQFMAMBAf8wDQYJKoZIhvcNAQEFBQAD
+ggEBADJL87LKPpH8EsahB4yOd6AzBhRckB4Y9wimPQoZ+YeAEW5p5JYXMP80kWNy
+OO7MHAGjHZQopDH2esRU1/blMVgDoszOYtuURXO1v0XJJLXVggKtI3lpjbi2Tc7P
+TMozI+gciKqdi0FuFskg5YmezTvacPd+mSYgFFQlq25zheabIZ0KbIIOqPjCDPoQ
+HmyW74cNxA9hi63ugyuV+I6ShHI56yDqg+2DzZduCLzrTia2cyvk0/ZM/iZx4mER
+dEr/VxqHD3VILs9RaRegAhJhldXRQLIQTO7ErBBDpqWeCtWVYpoNz4iCxTIM5Cuf
+ReYNnyicsbkqWletNw+vHX/bvZ8=
+-----END CERTIFICATE-----
+"""
 
 Attachments = Mapping[Tuple[str, str], bytes]
 Envelope = Dict[str, Union[str, int]]
@@ -68,8 +96,8 @@ def setup_logging(redacted_patterns, verbose=False):
     logging.getLogger("teleword").addFilter(redacting_filter)
 
 
-def make_http_request(url, insecure=True, data=None, files=None):
-    # type: (str, bool, Optional[Envelope], Optional[Attachments]) -> Tuple[int, bytes]
+def make_http_request(url, data=None, files=None, certificate=None):
+    # type: (str, Optional[Envelope], Optional[Attachments], str) -> Tuple[int, bytes]
     if data is None:
         data = {}
 
@@ -80,9 +108,12 @@ def make_http_request(url, insecure=True, data=None, files=None):
     logger.debug("Sending POST request to {0}".format(url))
     body, boundary = encode_multipart_formdata(data, files)
 
-    connection = HTTPSConnection(
-        netloc, context=ssl._create_unverified_context() if insecure else None
-    )
+    if certificate:
+        ssl_context = ssl.create_default_context(cafile=certificate)
+    else:
+        ssl_context = ssl._create_default_https_context()
+
+    connection = HTTPSConnection(netloc, context=ssl_context)
     connection.connect()
 
     connection.putrequest("POST", url)
@@ -153,9 +184,13 @@ class TelegramBotAPI:
         # type: (str, int) -> None
 
         self.token = token  # type: str
+        self.insecure = False
         self.silent = False  # type: bool
         self.parse_mode = None  # type: Optional[str]
         self.chat_id = chat_id  # type: int
+
+    def enable_insecure_connection(self):
+        self.insecure = True
 
     def disable_notifications(self):
         # type: () -> None
@@ -191,12 +226,24 @@ class TelegramBotAPI:
                 _, filename = os.path.split(path)
                 files[(field, filename)] = fp.read()
 
-        status_code, response = make_http_request(
-            "{0}{1}/{2}".format(TELEGRAM_API_ENDPOINT, self.token, method_name),
-            insecure=True,
-            data=data,
-            files=files,
-        )
+        if self.insecure:
+            cafile_path = None
+            logger.info("Skipping certificate verification as requested by user!")
+        else:
+            (fd, cafile_path) = mkstemp(text=True)
+            os.write(fd, GODADDY_ROOT_CERTIFICATE.encode())
+            os.close(fd)
+
+        try:
+            status_code, response = make_http_request(
+                "{0}{1}/{2}".format(TELEGRAM_API_ENDPOINT, self.token, method_name),
+                certificate=cafile_path,
+                data=data,
+                files=files,
+            )
+        finally:
+            if cafile_path:
+                os.remove(cafile_path)
 
         logger.debug("Response status: {0}".format(status_code))
         logger.debug("Response data: {0}".format(response.decode()))
@@ -297,6 +344,9 @@ def parse_cmdline_arguments():
         "--silent", action="store_true", help="Do not notify recipient of the message."
     )
     parser.add_argument("--force", action="store_true", help="Skip sanity checks.")
+    parser.add_argument(
+        "--insecure", action="store_true", help="Skip certificate verification."
+    )
     parser.add_argument("--verbose", action="store_true", help="Log debug information.")
     parser.add_argument(
         "--version", action="version", version="%(prog)s {0}".format(__VERSION__)
@@ -357,6 +407,8 @@ def main():
             bot_api.disable_notifications()
         if arguments.markdown:
             bot_api.set_parse_mode("markdown")
+        if arguments.insecure:
+            bot_api.enable_insecure_connection()
 
         if arguments.mode == "text":
             if bot_api.send_message(arguments.chat_id, arguments.text):

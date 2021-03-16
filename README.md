@@ -2,32 +2,24 @@
 
 Single-file Telegram client for Python 3 without external dependencies.
 
-
-
 ## Premise
 
 Sometimes you just need to send a simple Telegram message without the hustle of creating virtualenv's, installing necessary dependencies etc. 
 
 Why bother? Just grab `teleword.py` from this repo, `scp` it onto the machine and - voila! You can send messages and media from the command line!
 
-
-
 ## Features
 
 * Uses only standard library.
-* Works on Python 3.5 - 3.8.
+* Works on Python 2.7, 3.5 - 3.8.
 * Can send text, photos and videos.
 * Supports Markdown.
-
-
 
 ## Prerequisites
 
 * You need to [create Telegram bot](https://core.telegram.org/bots#6-botfather) first and get its token.
 * Somehow find out your Telegram *chat_id*.
 * Set `TELEGRAM_BOT_TOKEN` environment variable (or provide it via command line argument).
-
-
 
 ## Example usage
 

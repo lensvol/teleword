@@ -52,11 +52,15 @@ ReYNnyicsbkqWletNw+vHX/bvZ8=
 
 
 if not PY2:
-    from typing import Tuple, Union, Dict, Optional, Mapping, Iterable
+    try:
+        from typing import Tuple, Union, Dict, Optional, Mapping, Iterable
 
-    Attachments = Mapping[Tuple[str, str], bytes]
-    Envelope = Dict[str, Union[str, int]]
-    Response = Mapping[str, Union[int, str]]
+        Attachments = Mapping[Tuple[str, str], bytes]
+        Envelope = Dict[str, Union[str, int]]
+        Response = Mapping[str, Union[int, str]]
+    except ImportError:
+        # Apparently, this is a Python 3 version without `typing` module
+        pass
 
 TELEGRAM_API_ENDPOINT = "https://api.telegram.org/bot"
 VIDEO_SIZE_LIMIT = 20 * 1024 * 1024

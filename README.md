@@ -11,7 +11,7 @@ Why bother? Just grab `teleword.py` from this repo, `scp` it onto the machine an
 ## Features
 
 * Uses only standard library.
-* Works on Python 2.7, 3.4 - 3.8.
+* Works on Python 2.7, 3.4 - 3.9
 * Can send text, photos and videos.
 * Supports Markdown.
 

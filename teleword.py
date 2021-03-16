@@ -1,3 +1,9 @@
+from __future__ import absolute_import, print_function, unicode_literals, division
+
+import sys  # noqa
+
+PY2 = sys.version_info[0] == 2  # noqa
+
 import argparse
 import io
 import json
@@ -7,12 +13,13 @@ import os
 import random
 import ssl
 import string
-import sys
 from http.client import HTTPSConnection
 from tempfile import mkstemp
-from typing import Tuple, Union, Dict, Optional, Mapping, Iterable, Any
-from urllib.parse import urlparse
 
+if PY2:
+    from urlparse import urlparse
+else:
+    from urllib.parse import urlparse
 
 __VERSION__ = "0.1.0"
 
@@ -43,9 +50,13 @@ ReYNnyicsbkqWletNw+vHX/bvZ8=
 -----END CERTIFICATE-----
 """
 
-Attachments = Mapping[Tuple[str, str], bytes]
-Envelope = Dict[str, Union[str, int]]
-Response = Mapping[str, Union[int, str]]
+
+if not PY2:
+    from typing import Tuple, Union, Dict, Optional, Mapping, Iterable
+
+    Attachments = Mapping[Tuple[str, str], bytes]
+    Envelope = Dict[str, Union[str, int]]
+    Response = Mapping[str, Union[int, str]]
 
 TELEGRAM_API_ENDPOINT = "https://api.telegram.org/bot"
 VIDEO_SIZE_LIMIT = 20 * 1024 * 1024

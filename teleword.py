@@ -163,13 +163,17 @@ def encode_multipart_formdata(data, files):
             body.write(b"\r\n")
         append_crlf = True
 
+        encoded_value = str(value)
+        if PY2:
+            encoded_value = encoded_value.decode("utf-8")
+
         block = [
             "--{0}".format(boundary),
             'Content-Disposition: form-data; name="{0}"'.format(key),
             "",
-            str(value),
+            encoded_value,
         ]
-        body.write(("\r\n".join(block)).encode())
+        body.write(("\r\n".join(block)).encode("utf-8", "surrogateescape"))
 
     for (field, filename), contents in files.items():
         if append_crlf:

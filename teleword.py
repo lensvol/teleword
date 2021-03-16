@@ -62,7 +62,8 @@ class RedactingFilter(logging.Filter):
     https://relaxdiego.com/2014/07/logging-in-python.html#redacting-logs-using-a-filter
     """
 
-    def __init__(self, patterns: Iterable[str]):
+    def __init__(self, patterns):
+        # type: (Iterable[str]) -> None
         super(RedactingFilter, self).__init__()
         self._patterns = patterns
 

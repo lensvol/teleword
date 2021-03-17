@@ -11,7 +11,7 @@ Why bother? Just grab `teleword.py` from this repo, `scp` it onto the machine an
 ## Features
 
 * Uses only standard library.
-* Works on Python 2.7, 3.3 - 3.9
+* Works on Python 2.7, 3.2 - 3.9
 * Can send text, photos and videos.
 * Supports Markdown.
 
@@ -74,7 +74,6 @@ optional arguments:
 ## TODOs
 
 * Support sending "media groups", audio.
-* Python 2 support.
 * Shell completion.
 * Chat ID retrieval mode.
 

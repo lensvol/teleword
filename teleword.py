@@ -124,12 +124,21 @@ def make_http_request(url, data=None, files=None, certificate=None):
     logger.debug("Sending POST request to {0}".format(url))
     body, boundary = encode_multipart_formdata(data, files)
 
-    if certificate:
-        ssl_context = ssl.create_default_context(cafile=certificate)
+    # Sadly, ssl_create_default_context() only available in Python 3.4+
+    if not PY2 and sys.version_info[1] >= 4:
+        if certificate:
+            ssl_context = ssl.create_default_context(cafile=certificate)
+        else:
+            ssl_context = ssl._create_default_https_context()
+        connection = HTTPSConnection(netloc, context=ssl_context)
     else:
-        ssl_context = ssl._create_default_https_context()
+        from ssl import SSLContext
 
-    connection = HTTPSConnection(netloc, context=ssl_context)
+        ssl_context = SSLContext(protocol=ssl.PROTOCOL_SSLv23)
+        ssl_context.verify_mode = ssl.CERT_REQUIRED
+        ssl_context.load_verify_locations(cafile=certificate)
+        connection = HTTPSConnection(netloc, context=ssl_context, check_hostname=True)
+
     connection.connect()
 
     connection.putrequest("POST", url)
@@ -462,3 +471,25 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+__all__ = [
+    "Attachments",
+    "BadUploadError",
+    "Envelope",
+    "GODADDY_ROOT_CERTIFICATE",
+    "PHOTO_SIZE_LIMIT",
+    "RedactingFilter",
+    "Response",
+    "TELEGRAM_API_ENDPOINT",
+    "TelegramBotAPI",
+    "VIDEO_SIZE_LIMIT",
+    "bail",
+    "encode_multipart_formdata",
+    "logger",
+    "main",
+    "make_http_request",
+    "parse_cmdline_arguments",
+    "sanity_check_upload",
+    "setup_logging",
+]

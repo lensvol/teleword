@@ -387,7 +387,10 @@ def parse_cmdline_arguments():
 
     msg_parser = subparsers.add_parser("text", help="Text message.")
     msg_parser.add_argument(
-        "text", metavar="TEXT", type=str, help="Text of the message."
+        "text",
+        metavar="TEXT",
+        type=str,
+        help="Text of the message ('-' to read it from STDIN).",
     )
 
     photo_parser = subparsers.add_parser("photo", help="Photo.")
@@ -440,7 +443,12 @@ def main():
             bot_api.enable_insecure_connection()
 
         if arguments.mode == "text":
-            if bot_api.send_message(arguments.chat_id, arguments.text):
+            if arguments.text == "-":
+                text_to_send = sys.stdin.read()
+            else:
+                text_to_send = arguments.text
+
+            if bot_api.send_message(arguments.chat_id, text_to_send):
                 logger.info("Successfully sent message.")
         elif arguments.mode == "photo":
             if not arguments.force:

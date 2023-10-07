@@ -2,8 +2,6 @@ from __future__ import absolute_import, print_function, unicode_literals, divisi
 
 import sys  # noqa
 
-PY2 = sys.version_info[0] == 2  # noqa
-
 import argparse
 import io
 import json
@@ -15,6 +13,8 @@ import ssl
 import string
 from http.client import HTTPSConnection
 from tempfile import mkstemp
+
+PY2 = sys.version_info[0] == 2  # noqa
 
 if PY2:
     from urlparse import urlparse
@@ -53,7 +53,10 @@ ReYNnyicsbkqWletNw+vHX/bvZ8=
 
 if not PY2:
     try:
-        from typing import Tuple, Union, Dict, Optional, Mapping, Iterable
+        from typing import Tuple, Union, Dict, Mapping
+
+        # We explicitly silence F401 here because those are used inside type comments
+        from typing import Optional, Iterable  # noqa: F401
 
         Attachments = Mapping[Tuple[str, str], bytes]
         Envelope = Dict[str, Union[str, int]]
@@ -427,9 +430,7 @@ def main():
     setup_logging([token_from_env or arguments.token], verbose=arguments.verbose)
 
     if not token_from_env and not arguments.token:
-        bail(
-            "Telegram API token not specified as an argument and not set in environment! Exiting..."
-        )
+        bail("Bot API token not provided as an argument and not set in environment!")
 
     try:
         bot_api = TelegramBotAPI(

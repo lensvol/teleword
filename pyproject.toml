@@ -1,23 +1,22 @@
-[tool.poetry]
+[project]
 name = "teleword"
 version = "0.1.0"
 description = "Single-file Telegram mini-client using vanilla Python."
-authors = ["Kirill Borisov <lensvol@gmail.com>"]
-license = "MIT"
+authors = [
+    { name = "Kirill Borisov", email = "lensvol@gmail.com" }
+]
+dependencies = [
+]
+readme = "README.md"
+requires-python = ">= 3.10"
 
-[tool.poetry.dependencies]
-python = "^3.7"
+[tool.rye]
+managed = true
+dev-dependencies = [
+    "black>=23.9.1",
+    "ruff>=0.0.292",
+    "ipdb>=0.13.13",
+]
 
-[tool.poetry.dev-dependencies]
-black = "^19.10b0"
-mypy = "^0.761"
-ipdb = "^0.13.2"
-flake8 = "^3.7.9"
-pybetter = "^0.3.4"
-
-[tool.poetry.group.dev.dependencies]
-ruff = "^0.0.292"
-
-[build-system]
-requires = ["poetry>=0.12"]
-build-backend = "poetry.masonry.api"
+[tool.hatch.metadata]
+allow-direct-references = true

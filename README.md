@@ -1,17 +1,19 @@
 # teleword
 
+![Supports Python 2.7](https://img.shields.io/badge/Python-2.7-yellow?logo=python&logoColor=white) ![Python 3.2 and above](https://img.shields.io/badge/Python-3.2%2B-blue?logo=python&logoColor=white) [![License](https://img.shields.io/github/license/lensvol/pybetter)](LICENSE) [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+
 Single-file Telegram client for Python 3 without external dependencies.
 
 ## Premise
 
-Sometimes you just need to send a simple Telegram message without the hustle of creating virtualenv's, installing necessary dependencies etc. 
+Sometimes you just need to send a simple Telegram message without the hustle of creating _virtualenvs_, installing necessary dependencies etc. 
 
 Why bother? Just grab `teleword.py` from this repo, `scp` it onto the machine and - voila! You can send messages and media from the command line!
 
 ## Features
 
 * Uses only standard library.
-* Works on Python 2.7, 3.2 - 3.9
+* Works on Python 2.7, 3.2 - 3.12
 * Can send text, photos and videos.
 * Supports Markdown.
 
@@ -76,4 +78,3 @@ optional arguments:
 * Support sending "media groups", audio.
 * Shell completion.
 * Chat ID retrieval mode.
-

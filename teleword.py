@@ -423,18 +423,39 @@ def bail(message):
     sys.exit(-1)
 
 
+def load_token_from_file():
+    possible_paths = [
+        ".teleword_token",
+        os.path.expanduser("~/.teleword_token"),
+    ]
+
+    for token_path in possible_paths:
+        if not os.path.exists(token_path):
+            continue
+
+        with open(token_path, "r") as token_file:
+            return token_file.read()
+
+    return None
+
+
 def main():
     arguments = parse_cmdline_arguments()
     token_from_env = os.environ.get("TELEGRAM_BOT_TOKEN")
+    token_from_file = load_token_from_file()
 
-    setup_logging([token_from_env or arguments.token], verbose=arguments.verbose)
+    bot_token = arguments.token or token_from_env or token_from_file
+    setup_logging([bot_token] if bot_token else [], verbose=arguments.verbose)
 
-    if not token_from_env and not arguments.token:
-        bail("Bot API token not provided as an argument and not set in environment!")
+    if not bot_token:
+        bail(
+            "Bot API token was not provided as an argument, environment variable or provided via file!"
+        )
 
     try:
         bot_api = TelegramBotAPI(
-            token=arguments.token or token_from_env, chat_id=arguments.chat_id
+            token=bot_token,
+            chat_id=arguments.chat_id,
         )
         if arguments.silent:
             bot_api.disable_notifications()

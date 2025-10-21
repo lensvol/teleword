@@ -282,8 +282,10 @@ class TelegramBotAPI:
 
         if status_code != 200:
             logger.error(
-                "Call to Bot API failed with code {0}: {1}".format(
-                    status_code, response.decode()
+                "Call to Bot API method '{2}' failed with code {0}: {1}".format(
+                    status_code,
+                    response.decode(),
+                    method_name,
                 )
             )
             return None
